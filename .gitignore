@@ -133,8 +133,12 @@ wandb/
 t2m/
 body_models/
 glove/
+dataset/HumanML3D/
+dataset/KIT-ML/
 slurm**/
 *.out
 *.err
 *.slurm
 .vscode/
+*.zip
+__MACOSX/

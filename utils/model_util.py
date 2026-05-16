@@ -113,6 +113,12 @@ def create_gaussian_diffusion(args):
         lambda_rcxyz=args.lambda_rcxyz,
         lambda_fc=args.lambda_fc,
         lambda_target_loc=lambda_target_loc,
+        lambda_phys=getattr(args, 'lambda_phys', 0.),
+        lambda_phys_ground=getattr(args, 'lambda_phys_ground', 1.),
+        lambda_phys_foot=getattr(args, 'lambda_phys_foot', 1.),
+        lambda_phys_smooth=getattr(args, 'lambda_phys_smooth', 0.),
+        phys_floor_height=getattr(args, 'phys_floor_height', 0.),
+        phys_contact_height_threshold=getattr(args, 'phys_contact_height_threshold', 0.05),
     )
 
 def load_saved_model(model, model_path, use_avg: bool=False):  # use_avg_model

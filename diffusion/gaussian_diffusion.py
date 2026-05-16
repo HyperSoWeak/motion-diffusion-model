@@ -18,6 +18,7 @@ from diffusion.losses import normal_kl, discretized_gaussian_log_likelihood
 from data_loaders.humanml.scripts import motion_process
 from utils.loss_util import masked_l2, masked_goal_l2
 from data_loaders.humanml.scripts.motion_process import get_target_location
+from utils.physics_losses import physics_loss
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps, scale_betas=1.):
     """
@@ -137,6 +138,12 @@ class GaussianDiffusion:
         lambda_vel_rcxyz=0.,
         lambda_fc=0.,
         lambda_target_loc=0.,
+        lambda_phys=0.,
+        lambda_phys_ground=1.,
+        lambda_phys_foot=1.,
+        lambda_phys_smooth=0.,
+        phys_floor_height=0.,
+        phys_contact_height_threshold=0.05,
         **kargs,
     ):
         self.model_mean_type = model_mean_type
@@ -157,9 +164,16 @@ class GaussianDiffusion:
         self.lambda_root_vel = lambda_root_vel
         self.lambda_vel_rcxyz = lambda_vel_rcxyz
         self.lambda_fc = lambda_fc
+        self.lambda_phys = lambda_phys
+        self.lambda_phys_ground = lambda_phys_ground
+        self.lambda_phys_foot = lambda_phys_foot
+        self.lambda_phys_smooth = lambda_phys_smooth
+        self.phys_floor_height = phys_floor_height
+        self.phys_contact_height_threshold = phys_contact_height_threshold
 
         if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
-                self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0. or self.lambda_target_loc > 0.:
+                self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0. or self.lambda_target_loc > 0. or \
+                self.lambda_phys > 0.:
             assert self.loss_type == LossType.MSE, 'Geometric losses are supported by MSE loss type only!'
 
         # Use float64 for accuracy.
@@ -1345,13 +1359,39 @@ class GaussianDiffusion:
                                             model_kwargs['y']['lengths'], dataset.t2m_dataset.opt.joints_num, model.all_goal_joint_names, 
                                             model_kwargs['y']['target_joint_names'], model_kwargs['y']['is_heading'])
                 terms["target_loc"] = masked_goal_l2(pred_target, ref_target, model_kwargs['y'], model.all_goal_joint_names)
+
+            if self.lambda_phys > 0.:
+                assert self.model_mean_type == ModelMeanType.START_X, 'Physics loss supports only X_start prediction.'
+                assert dataset is not None, 'Physics loss requires the dataset object for HumanML denormalization.'
+                if model_output.shape[1] != 263:
+                    raise NotImplementedError('Physics loss currently supports HumanML3D hml_vec motions only.')
+
+                mean = dataset.mean_gpu.to(device=model_output.device, dtype=model_output.dtype)
+                std = dataset.std_gpu.to(device=model_output.device, dtype=model_output.dtype)
+                denorm_output = model_output * std + mean
+                joints = motion_process.recover_from_ric(denorm_output.permute(0, 2, 3, 1), joints_num=22).squeeze(1)
+                phys_total, phys_terms = physics_loss(
+                    joints,
+                    lengths=model_kwargs['y']['lengths'],
+                    lambda_ground=self.lambda_phys_ground,
+                    lambda_foot=self.lambda_phys_foot,
+                    lambda_smooth=self.lambda_phys_smooth,
+                    floor_height=self.phys_floor_height,
+                    contact_height_threshold=self.phys_contact_height_threshold,
+                    reduction="none",
+                )
+                terms["phys_loss"] = phys_total
+                for phys_name, phys_value in phys_terms.items():
+                    if phys_name != "phys_loss":
+                        terms[phys_name] = phys_value
                             
 
             terms["loss"] = terms["rot_mse"] + terms.get('vb', 0.) +\
                             (self.lambda_vel * terms.get('vel_mse', 0.)) +\
                             (self.lambda_rcxyz * terms.get('rcxyz_mse', 0.)) + \
                             (self.lambda_target_loc * terms.get('target_loc', 0.)) + \
-                            (self.lambda_fc * terms.get('fc', 0.))
+                            (self.lambda_fc * terms.get('fc', 0.)) + \
+                            (self.lambda_phys * terms.get('phys_loss', 0.))
 
         else:
             raise NotImplementedError(self.loss_type)

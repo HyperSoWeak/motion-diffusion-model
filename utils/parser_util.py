@@ -113,9 +113,21 @@ def add_model_options(parser):
     group.add_argument("--lambda_vel", default=0.0, type=float, help="Joint velocity loss.")
     group.add_argument("--lambda_fc", default=0.0, type=float, help="Foot contact loss.")
     group.add_argument("--lambda_target_loc", default=0.0, type=float, help="For HumanML only, when . L2 with target location.")
+    group.add_argument("--lambda_phys", default=0.0, type=float,
+                       help="Overall weight for lightweight physics residuals on predicted x_0.")
+    group.add_argument("--lambda_phys_ground", default=1.0, type=float,
+                       help="Ground penetration residual weight inside L_phys.")
+    group.add_argument("--lambda_phys_foot", default=1.0, type=float,
+                       help="Foot skating residual weight inside L_phys.")
+    group.add_argument("--lambda_phys_smooth", default=0.0, type=float,
+                       help="Acceleration smoothness residual weight inside L_phys.")
+    group.add_argument("--phys_floor_height", default=0.0, type=float,
+                       help="Floor height used by physics residuals.")
+    group.add_argument("--phys_contact_height_threshold", default=0.05, type=float,
+                       help="Foot height threshold for contact detection in physics residuals.")
     group.add_argument("--unconstrained", action='store_true',
                        help="Model is trained unconditionally. That is, it is constrained by neither text nor action. "
-                            "Currently tested on HumanAct12 only.")
+                       "Currently tested on HumanAct12 only.")
     group.add_argument("--pos_embed_max_len", default=5000, type=int,
                        help="Pose embedding max length.")
     group.add_argument("--use_ema", action='store_true',

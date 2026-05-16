@@ -143,3 +143,4 @@ slurm**/
 dataset/
 *.zip
 __MACOSX/
+kit/

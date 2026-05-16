@@ -102,7 +102,17 @@ ax = fig.add_subplot(projection='3d')
 PATH="$(pwd)/.venv/bin:$PATH" bash prepare/download_smpl_files.sh
 ```
 
-### HumanML3D text prompts（只需要 text，不需要 motion capture）
+### glove
+```bash
+PATH="$(pwd)/.venv/bin:$PATH" bash prepare/download_glove.sh
+```
+### t2m（text-to-motion benchmark）
+
+```bash
+PATH="$(pwd)/.venv/bin:$PATH" bash prepare/download_t2m_evaluators.sh
+```
+
+### HumanML3D
 
 ```bash
 cd /tmp2/$USER   # 放在工作目錄外
@@ -112,6 +122,8 @@ mkdir -p /path/to/motion-diffusion-model/dataset/HumanML3D
 cp -r HumanML3D/HumanML3D/* /path/to/motion-diffusion-model/dataset/HumanML3D/
 cd /path/to/motion-diffusion-model
 ```
+
+其他資料: [Drive link](https://drive.google.com/drive/folders/1OZrTlAGRvLjXhXwnRiOC-oxYry1vf-Uu) 也要下載解壓縮放進 `dataset/HumanML3D/`。
 
 ## Step 5：下載預訓練模型
 

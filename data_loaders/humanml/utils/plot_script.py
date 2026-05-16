@@ -42,7 +42,7 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         ax.set_zlim3d([-radius / 3., radius * 2 / 3.])
         # print(title)
         # fig.suptitle(title, fontsize=10)  # Using dynamic title instead
-        ax.grid(b=False)
+        ax.grid(False)
 
     def plot_xzPlane(minx, maxx, miny, minz, maxz):
         ## Plot a plane XZ
@@ -70,8 +70,8 @@ def plot_3d_motion(save_path, kinematic_tree, joints, title, dataset, figsize=(3
         data *= -1.5 # reverse axes, scale for visualization
 
     fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(projection='3d')
     plt.tight_layout()
-    ax = p3.Axes3D(fig)
     init()
     MINS = data.min(axis=0).min(axis=0)
     MAXS = data.max(axis=0).max(axis=0)

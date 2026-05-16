@@ -11,6 +11,7 @@ from utils.parser_util import generate_args
 from utils.model_util import create_model_and_diffusion, load_saved_model
 from utils import dist_util
 from utils.sampler_util import ClassifierFreeSampleModel, AutoRegressiveSampler
+from utils.velocity_guidance_sampler import VelocityGuidedSampleModel
 from data_loaders.get_data import get_dataset_loader
 from data_loaders.humanml.scripts.motion_process import recover_from_ric, get_target_location, sample_goal
 import data_loaders.humanml.utils.paramUtil as paramUtil
@@ -90,8 +91,49 @@ def main(args=None):
     print(f"Loading checkpoints from [{args.model_path}]...")
     load_saved_model(model, args.model_path, use_avg=args.use_ema)
 
+    # Wrap model with guidance samplers
     if args.guidance_param != 1:
         model = ClassifierFreeSampleModel(model)   # wrapping model with the classifier-free sampler
+    
+    # Apply velocity guidance if enabled
+    if args.velocity_guidance_scale > 0:
+        from model.velocity_classifier import VelocityRegressor
+        
+        # Initialize velocity regressor
+        input_feats = model.njoints * model.nfeats if hasattr(model, 'njoints') else 263
+        velocity_regressor = VelocityRegressor(input_feats=input_feats)
+        
+        # Load pretrained regressor if provided
+        if args.velocity_regressor_path and os.path.exists(args.velocity_regressor_path):
+            print(f"Loading velocity regressor from {args.velocity_regressor_path}")
+            state_dict = torch.load(args.velocity_regressor_path, map_location='cpu')
+            velocity_regressor.load_state_dict(state_dict)
+        
+        velocity_regressor.to(dist_util.dev())
+        velocity_regressor.eval()
+        
+        # Parse target velocity if provided
+        target_velocity = None
+        if args.target_velocity:
+            try:
+                vx, vz = map(float, args.target_velocity.split(','))
+                target_velocity = torch.tensor([[vx, vz]] * args.batch_size, 
+                                              device=dist_util.dev(), dtype=torch.float32)
+            except:
+                print(f"Warning: Could not parse target_velocity '{args.target_velocity}'. Using default.")
+        
+        # Wrap with velocity guidance
+        model = VelocityGuidedSampleModel(
+            model=model,
+            velocity_regressor=velocity_regressor,
+            use_classifier_free=(args.guidance_param != 1)
+        )
+        
+        # Store velocity guidance parameters in model for use during sampling
+        model.velocity_guidance_scale = args.velocity_guidance_scale
+        model.target_velocity = target_velocity
+        model.velocity_guidance_mode = args.velocity_guidance_mode
+    
     model.to(dist_util.dev())
     model.eval()  # disable random masking
 

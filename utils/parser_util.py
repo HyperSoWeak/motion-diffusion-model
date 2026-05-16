@@ -206,6 +206,14 @@ def add_sampling_options(parser):
                        help="Number of repetitions, per sample (text prompt/action)")
     group.add_argument("--guidance_param", default=2.5, type=float,
                        help="For classifier-free sampling - specifies the s parameter, as defined in the paper.")
+    group.add_argument("--velocity_guidance_scale", default=0.0, type=float,
+                       help="Strength of velocity guidance (0-1). 0 disables guidance. Higher values enforce stronger velocity control.")
+    group.add_argument("--velocity_guidance_mode", default='direction', type=str, choices=['direction', 'magnitude'],
+                       help="Velocity guidance mode: 'direction' guides motion towards target direction, 'magnitude' controls speed.")
+    group.add_argument("--target_velocity", default='', type=str,
+                       help="Target root velocity as 'vx,vz' (e.g., '0.5,0.0' for moving right). If empty, defaults to forward motion.")
+    group.add_argument("--velocity_regressor_path", default='', type=str,
+                       help="Path to trained velocity regressor checkpoint. If empty, will use default untrained regressor.")
 
     group.add_argument("--autoregressive", action='store_true', help="If true, and we use a prefix model will generate motions in an autoregressive loop.")
     group.add_argument("--autoregressive_include_prefix", action='store_true', help="If true, include the init prefix in the output, otherwise, will drop it.")
@@ -264,6 +272,14 @@ def add_evaluation_options(parser):
                         help="Sets the source of the init frames, either from the dataset or isaac init poses.")
     group.add_argument("--guidance_param", default=2.5, type=float,
                        help="For classifier-free sampling - specifies the s parameter, as defined in the paper.")
+    group.add_argument("--velocity_guidance_scale", default=0.0, type=float,
+                       help="Strength of velocity guidance (0-1). 0 disables guidance. Higher values enforce stronger velocity control.")
+    group.add_argument("--velocity_guidance_mode", default='direction', type=str, choices=['direction', 'magnitude'],
+                       help="Velocity guidance mode: 'direction' guides motion towards target direction, 'magnitude' controls speed.")
+    group.add_argument("--target_velocity", default='', type=str,
+                       help="Target root velocity as 'vx,vz' (e.g., '0.5,0.0' for moving right). If empty, defaults to forward motion.")
+    group.add_argument("--velocity_regressor_path", default='', type=str,
+                       help="Path to trained velocity regressor checkpoint. If empty, will use default untrained regressor.")
 
 
 def get_cond_mode(args):

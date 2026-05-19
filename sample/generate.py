@@ -100,14 +100,18 @@ def main(args=None):
         from model.velocity_classifier import VelocityRegressor
         
         # Initialize velocity regressor
-        input_feats = model.njoints * model.nfeats if hasattr(model, 'njoints') else 263
-        velocity_regressor = VelocityRegressor(input_feats=input_feats)
+        velocity_regressor = VelocityRegressor(njoints=model.njoints, nfeats=model.nfeats)
         
         # Load pretrained regressor if provided
         if args.velocity_regressor_path and os.path.exists(args.velocity_regressor_path):
             print(f"Loading velocity regressor from {args.velocity_regressor_path}")
             state_dict = torch.load(args.velocity_regressor_path, map_location='cpu')
-            velocity_regressor.load_state_dict(state_dict)
+            try:
+                velocity_regressor.load_state_dict(state_dict, strict=False)
+            except RuntimeError as e:
+                print(f"Warning: Could not load state dict. Error: {e}")
+                print("Loading with strict=False...")
+                velocity_regressor.load_state_dict(state_dict, strict=False)
         
         velocity_regressor.to(dist_util.dev())
         velocity_regressor.eval()
@@ -116,11 +120,12 @@ def main(args=None):
         target_velocity = None
         if args.target_velocity:
             try:
-                vx, vz = map(float, args.target_velocity.split(','))
+                vx, vz = map(float, args.target_velocity.strip().split(','))
                 target_velocity = torch.tensor([[vx, vz]] * args.batch_size, 
                                               device=dist_util.dev(), dtype=torch.float32)
-            except:
-                print(f"Warning: Could not parse target_velocity '{args.target_velocity}'. Using default.")
+                print(f"Target velocity: vx={vx}, vz={vz}")
+            except Exception as e:
+                print(f"Warning: Could not parse target_velocity '{args.target_velocity}'. Error: {e}")
         
         # Wrap with velocity guidance
         model = VelocityGuidedSampleModel(

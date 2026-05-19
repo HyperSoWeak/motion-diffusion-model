@@ -14,6 +14,7 @@ class VelocityRegressor(nn.Module):
     Velocity regressor that predicts root velocity from MDM motion features.
     
     Takes MDM model output and predicts root linear velocity (vx, vz) for each frame.
+    Includes OPTIONAL timestep conditioning to adapt predictions based on diffusion noise level.
     The root velocity information is extracted from channels [1:3] of the motion features,
     which contain the root linear velocity in the xz plane during training.
     
@@ -23,9 +24,12 @@ class VelocityRegressor(nn.Module):
         latent_dim: Dimension of latent representation for the FC layers
         num_layers: Number of hidden layers
         dropout: Dropout rate
+        use_timestep_cond: If True, condition predictions on diffusion timestep
+        num_diffusion_steps: Total number of diffusion steps (only used if use_timestep_cond=True)
     """
     
-    def __init__(self, njoints=22, nfeats=12, latent_dim=256, num_layers=3, dropout=0.1):
+    def __init__(self, njoints=22, nfeats=12, latent_dim=256, num_layers=3, dropout=0.1, 
+                 use_timestep_cond=True, num_diffusion_steps=1000):
         super().__init__()
         
         self.njoints = njoints
@@ -34,12 +38,22 @@ class VelocityRegressor(nn.Module):
         self.latent_dim = latent_dim
         self.num_layers = num_layers
         self.dropout = dropout
+        self.use_timestep_cond = use_timestep_cond
+        self.num_diffusion_steps = num_diffusion_steps
+        
+        # Timestep embedding (if using timestep conditioning)
+        if use_timestep_cond:
+            self.time_embed = nn.Embedding(num_diffusion_steps, latent_dim)
         
         # Temporal processing: Conv1d to process motion features across time
         # Input: (B, njoints*nfeats, T) after reshaping
         # Process full motion to predict velocity at each frame
+        temporal_in_dim = self.input_feats
+        if use_timestep_cond:
+            temporal_in_dim = self.input_feats + latent_dim  # Concatenate timestep embedding
+        
         self.temporal_encoder = nn.Sequential(
-            nn.Conv1d(self.input_feats, latent_dim, kernel_size=3, padding=1),
+            nn.Conv1d(temporal_in_dim, latent_dim, kernel_size=3, padding=1),
             nn.BatchNorm1d(latent_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
@@ -58,10 +72,12 @@ class VelocityRegressor(nn.Module):
         # Output layer: predict velocity at each frame (2D: vx, vz)
         self.velocity_head = nn.Conv1d(latent_dim, 2, kernel_size=1)
         
-    def forward(self, x):
+    def forward(self, x, timesteps=None):
         """
         Args:
             x: (batch_size, njoints, nfeats, seq_len) motion features from MDM
+            timesteps: (batch_size,) optional diffusion timesteps for conditioning
+                       REQUIRED if use_timestep_cond=True, otherwise optional
         
         Returns:
             vel: (batch_size, seq_len, 2) root velocity [vel_x, vel_z] at each frame
@@ -70,6 +86,20 @@ class VelocityRegressor(nn.Module):
         
         # Reshape to (batch_size, njoints*nfeats, seq_len) for processing
         x_flat = x.reshape(B, njoints * nfeats, T)
+        
+        # Add timestep conditioning if model was initialized with it
+        if self.use_timestep_cond:
+            if timesteps is None:
+                raise ValueError(
+                    "Model was initialized with use_timestep_cond=True but no timesteps provided. "
+                    "Either pass timesteps to forward() or reinitialize model with use_timestep_cond=False"
+                )
+            # Embed timesteps: (B,) -> (B, latent_dim)
+            t_embed = self.time_embed(timesteps)  # (B, latent_dim)
+            # Expand to sequence length: (B, latent_dim) -> (B, latent_dim, T)
+            t_embed_expanded = t_embed.unsqueeze(-1).expand(-1, -1, T)
+            # Concatenate with motion features: (B, input_feats + latent_dim, T)
+            x_flat = torch.cat([x_flat, t_embed_expanded], dim=1)
         
         # Process through temporal encoder
         h = self.temporal_encoder(x_flat)  # (B, latent_dim, T)

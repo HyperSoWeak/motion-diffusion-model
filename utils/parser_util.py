@@ -242,6 +242,8 @@ def add_generate_options(parser):
     group.add_argument("--action_name", default='', type=str,
                        help="An action name to be generated. If empty, will take text prompts from dataset.")
     group.add_argument("--target_joint_names", default='DIMP_FINAL', type=str, help="Force single joint configuration by specifing the joints (coma separated). If None - will use the random mode for all end effectors.")
+    group.add_argument("--skip_visualization", action='store_true',
+                       help="If true, write results.npy/text/length files without rendering mp4 visualizations.")
 
 
 def add_edit_options(parser):

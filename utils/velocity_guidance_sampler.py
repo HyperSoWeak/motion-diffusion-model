@@ -156,8 +156,6 @@ class VelocityGuidedSampleModel(nn.Module):
                         print(f"  Grad norm before normalization: {grad_norm_before_norm:.6f}")
                         print(f"  Scaled update magnitude: {(self.velocity_guidance_scale * torch.norm(grad)).item():.4f}")
                         print(f"  base_out norm: {torch.norm(base_out).item():.4f}")
-                        print(f"{base_out[0, :5, 0, :5].detach().cpu().numpy()}")  # Print a small slice of the output for debugging
-                        print(f"{grad[0, :5, 0, :5].detach().cpu().numpy()}")  # Print corresponding slice of the gradient
                     
                     base_out = base_out - self.velocity_guidance_scale * grad
         
@@ -223,7 +221,6 @@ class SimpleVelocityGuidance:
             vel_avg = vel_pred.mean(dim=1)  # (B, 2) - average across time
             
             if self._step_count % 50 == 0:
-                print(f"[SimpleVelocityGuidance] Step {self._step_count}")
                 print(f"  Predicted velocity (avg): {vel_avg[0].detach().cpu().numpy()}")
                 if self.target_velocity is not None:
                     print(f"  Target velocity: {self.target_velocity[0].detach().cpu().numpy()}")

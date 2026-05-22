@@ -100,7 +100,7 @@ def main(args=None):
         from model.velocity_classifier import VelocityRegressor
         
         # Initialize velocity regressor
-        velocity_regressor = VelocityRegressor(njoints=model.njoints, nfeats=model.nfeats)
+        velocity_regressor = VelocityRegressor(njoints=model.njoints, nfeats=model.nfeats, use_timestep_cond=True, num_diffusion_steps=diffusion.num_timesteps)
         
         # Load pretrained regressor if provided
         if args.velocity_regressor_path and os.path.exists(args.velocity_regressor_path):

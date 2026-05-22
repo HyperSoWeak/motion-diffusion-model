@@ -29,7 +29,7 @@ class VelocityRegressor(nn.Module):
     """
     
     def __init__(self, njoints=22, nfeats=12, latent_dim=256, num_layers=3, dropout=0.1, 
-                 use_timestep_cond=True, num_diffusion_steps=1000):
+                 use_timestep_cond=True, num_diffusion_steps=50):
         super().__init__()
         
         self.njoints = njoints

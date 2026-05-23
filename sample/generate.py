@@ -50,7 +50,24 @@ def main(args=None):
     # this block must be called BEFORE the dataset is loaded
     texts = None
     if args.text_prompt != '':
-        texts = [args.text_prompt] * args.num_samples
+        if args.text_prompt.lower() == 'random':
+            # Load random text prompts from example file
+            example_prompts_path = 'assets/example_text_prompts.txt'
+            if os.path.exists(example_prompts_path):
+                with open(example_prompts_path, 'r') as f:
+                    example_prompts = [line.strip() for line in f.readlines() if line.strip()]
+                if example_prompts:
+                    # Randomly sample prompts for each sample
+                    texts = np.random.choice(example_prompts, size=args.num_samples, replace=True).tolist()
+                    print(f"Using {args.num_samples} random text prompts from {example_prompts_path}")
+                else:
+                    print(f"Warning: {example_prompts_path} is empty, using default prompt")
+                    texts = ['a person walks'] * args.num_samples
+            else:
+                print(f"Warning: {example_prompts_path} not found, using default prompt")
+                texts = ['a person walks'] * args.num_samples
+        else:
+            texts = [args.text_prompt] * args.num_samples
     elif args.input_text != '':
         assert os.path.exists(args.input_text)
         with open(args.input_text, 'r') as fr:
@@ -118,14 +135,29 @@ def main(args=None):
         
         # Parse target velocity if provided
         target_velocity = None
+        per_sample_velocities = None  # For random mode
         if args.target_velocity:
-            try:
-                vx, vz = map(float, args.target_velocity.strip().split(','))
-                target_velocity = torch.tensor([[vx, vz]] * args.batch_size, 
-                                              device=dist_util.dev(), dtype=torch.float32)
-                print(f"Target velocity: vx={vx}, vz={vz}")
-            except Exception as e:
-                print(f"Warning: Could not parse target_velocity '{args.target_velocity}'. Error: {e}")
+            if args.target_velocity.strip().lower() == 'random':
+                # Generate random target velocities for each sample in range [-1, 1] to [1, 1]
+                vx_vals = np.random.uniform(-1.0, 1.0, args.batch_size)
+                vz_vals = np.random.uniform(-1.0, 1.0, args.batch_size)
+                per_sample_velocities = torch.tensor(
+                    np.column_stack([vx_vals, vz_vals]), 
+                    device=dist_util.dev(), dtype=torch.float32
+                )
+                print(f"Using random target velocities for each sample:")
+                print(f"  vx range: [{vx_vals.min():.2f}, {vx_vals.max():.2f}]")
+                print(f"  vz range: [{vz_vals.min():.2f}, {vz_vals.max():.2f}]")
+                # Set default for model (will be overridden per sample)
+                target_velocity = per_sample_velocities[0:1]  # Use first sample as default
+            else:
+                try:
+                    vx, vz = map(float, args.target_velocity.strip().split(','))
+                    target_velocity = torch.tensor([[vx, vz]] * args.batch_size, 
+                                                  device=dist_util.dev(), dtype=torch.float32)
+                    print(f"Target velocity: vx={vx}, vz={vz}")
+                except Exception as e:
+                    print(f"Warning: Could not parse target_velocity '{args.target_velocity}'. Error: {e}")
         
         # Wrap with velocity guidance
         model = VelocityGuidedSampleModel(
@@ -137,6 +169,7 @@ def main(args=None):
         # Store velocity guidance parameters in model for use during sampling
         model.velocity_guidance_scale = args.velocity_guidance_scale
         model.target_velocity = target_velocity
+        model.per_sample_velocities = per_sample_velocities  # For random velocities
         model.velocity_guidance_mode = args.velocity_guidance_mode
     
     model.to(dist_util.dev())

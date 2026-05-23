@@ -64,6 +64,7 @@ class VelocityGuidedSampleModel(nn.Module):
         # Velocity guidance parameters (set by caller)
         self.velocity_guidance_scale = 0.0
         self.target_velocity = None
+        self.per_sample_velocities = None  # For random/per-sample guidance
         self.velocity_guidance_mode = 'direction'
         self._guidance_step = 0  # For logging
     
@@ -114,23 +115,31 @@ class VelocityGuidedSampleModel(nn.Module):
                 if self._guidance_step % 50 == 0:  # Log every 50 steps
                     print(f"[Velocity Guidance] Step {self._guidance_step}")
                     print(f"  Predicted velocity (avg): {vel_avg[0].detach().cpu().numpy()}")
-                    if self.target_velocity is not None:
-                        print(f"  Target velocity: {self.target_velocity[0].detach().cpu().numpy()}")
+                    target_for_log = self.per_sample_velocities if self.per_sample_velocities is not None else self.target_velocity
+                    if target_for_log is not None:
+                        print(f"  Target velocity: {target_for_log[0].detach().cpu().numpy()}")
 
                 
                 # Compute guidance signal based on mode
-                if self.target_velocity is not None:
+                # Determine which target velocity to use (per-sample or uniform)
+                if self.per_sample_velocities is not None:
+                    target_vel = self.per_sample_velocities
+                else:
+                    target_vel = self.target_velocity
+                
+                if target_vel is not None:
                     # Guidance towards specific velocity
                     if self.velocity_guidance_mode == 'direction':
                         # Guide towards target velocity direction
-                        # self.target_velocity: (B, 2), vel_avg: (B, 2)
-                        target_dir = F.normalize(self.target_velocity, p=2, dim=-1)  # (B, 2)
+                        # target_vel: (B, 2), vel_avg: (B, 2)
+                        target_dir = F.normalize(target_vel, p=2, dim=-1)  # (B, 2)
                         pred_dir = F.normalize(vel_avg, p=2, dim=-1)  # (B, 2)
                         # Negative loss: we want to maximize dot product (minimize negative)
+                        # Compute per-sample loss then average
                         guidance_loss = -torch.sum(target_dir * pred_dir, dim=-1).mean()
                     elif self.velocity_guidance_mode == 'magnitude':
                         # Guide towards target velocity magnitude
-                        target_mag = compute_velocity_magnitude(self.target_velocity)  # (B,)
+                        target_mag = compute_velocity_magnitude(target_vel)  # (B,)
                         pred_mag = compute_velocity_magnitude(vel_avg)  # (B,)
                         guidance_loss = F.mse_loss(pred_mag, target_mag)
                     else:
@@ -156,6 +165,8 @@ class VelocityGuidedSampleModel(nn.Module):
                         print(f"  Grad norm before normalization: {grad_norm_before_norm:.6f}")
                         print(f"  Scaled update magnitude: {(self.velocity_guidance_scale * torch.norm(grad)).item():.4f}")
                         print(f"  base_out norm: {torch.norm(base_out).item():.4f}")
+                        if self.per_sample_velocities is not None:
+                            print(f"  Per-sample velocities applied")
                     
                     base_out = base_out - self.velocity_guidance_scale * grad
         
@@ -166,7 +177,7 @@ class VelocityGuidedSampleModel(nn.Module):
         if name in ['model', 'velocity_regressor', 'rot2xyz', 'translation', 
                     'njoints', 'nfeats', 'data_rep', 'cond_mode', 'encode_text',
                     'use_classifier_free', 'velocity_guidance_scale', 'target_velocity',
-                    'velocity_guidance_mode']:
+                    'per_sample_velocities', 'velocity_guidance_mode']:
             return super().__getattr__(name)
         return wrapped_getattr(self, name, default=None)
 

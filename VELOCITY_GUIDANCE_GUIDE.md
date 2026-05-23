@@ -21,6 +21,14 @@ python sample/generate.py \
   --text_prompt "walking" \
   --target_velocity "0.7,0.7" \
   --velocity_guidance_scale 0.3
+
+# Random text prompts with random velocities (NEW!)
+python sample/generate.py \
+  --model_path checkpoints/humanml_final.pt \
+  --text_prompt "random" \
+  --target_velocity "random" \
+  --velocity_guidance_scale 0.3 \
+  --num_samples 5
 ```
 
 ---
@@ -44,8 +52,13 @@ python sample/generate.py \
                                "0.7,0.7" = forward-right
                                "0.0,1.0" = right
                                "-1.0,0.0" = backward
+                               "random" = random velocity per sample (NEW!)
 
 --velocity_regressor_path      Path to trained regressor (optional)
+
+--text_prompt                  Text description OR "random" for random prompts (NEW!)
+                               "walk" = specific prompt
+                               "random" = pick random from assets/example_text_prompts.txt
 ```
 
 ---
@@ -91,6 +104,48 @@ python sample/generate.py \
   --guidance_param 2.5 \
   --velocity_guidance_scale 0.25 \
   --target_velocity "0.3,0.3"
+```
+
+### Random Text Prompts & Velocities (NEW! 🎲)
+
+**Random text prompts only:**
+```bash
+# Each sample gets a different random prompt from assets/example_text_prompts.txt
+python sample/generate.py \
+  --model_path path/to/your/mdm_model.pt \
+  --text_prompt "random" \
+  --num_samples 5
+```
+
+**Random target velocities only:**
+```bash
+# Each sample gets random vx, vz in range [-1, 1]
+python sample/generate.py \
+  --model_path path/to/your/mdm_model.pt \
+  --text_prompt "walk" \
+  --target_velocity "random" \
+  --velocity_guidance_scale 0.3 \
+  --num_samples 5 \
+  --velocity_regressor_path checkpoints/velocity_regressor_best.pt
+```
+
+**Both random (diverse generation):**
+```bash
+# Generate 5 samples with different text prompts AND different velocity targets
+python sample/generate.py \
+  --model_path path/to/your/mdm_model.pt \
+  --text_prompt "random" \
+  --target_velocity "random" \
+  --velocity_guidance_scale 0.3 \
+  --num_samples 5 \
+  --velocity_regressor_path checkpoints/velocity_regressor_best.pt
+
+# Output example:
+# Sample 0: "person got down and crawling"    → vx=-0.32, vz=0.51
+# Sample 1: "person lifts right arm and slaps" → vx=0.71, vz=-0.18
+# Sample 2: "person walks forward with steps"  → vx=0.09, vz=0.84
+# Sample 3: "person marches forward, turns"    → vx=-0.64, vz=0.22
+# Sample 4: "person drops hands together"      → vx=0.45, vz=-0.61
 ```
 
 ---
@@ -321,10 +376,98 @@ Guided x_pred
    --velocity_guidance_scale 0.2  # Velocity guidance (smaller)
    ```
 
-4. **Visualize results**
+4. **Generate diverse motions (NEW! 🎲)**
+   ```bash
+   # Use random prompts and velocities for variety
+   python sample/generate.py \
+     --text_prompt "random" \
+     --target_velocity "random" \
+     --num_samples 10 \
+     --velocity_guidance_scale 0.3
+   ```
+
+5. **Quick evaluation with random sampling**
+   ```bash
+   # Generate 5 random samples to evaluate model capability
+   python sample/generate.py \
+     --text_prompt "random" \
+     --target_velocity "random" \
+     --num_samples 5 \
+     --num_repetitions 3  # 3 variations each
+   ```
+
+6. **Visualize results**
    ```bash
    python visualize/render_mesh.py <generated_npy>
    ```
+
+7. **Random velocity ranges**
+   - **Conservative (subtle):** `--target_velocity "random" --velocity_guidance_scale 0.1`
+   - **Moderate (standard):** `--target_velocity "random" --velocity_guidance_scale 0.3`
+   - **Aggressive (strong):** `--target_velocity "random" --velocity_guidance_scale 0.5`
+
+---
+
+---
+
+## 🎲 Random Sampling Feature (NEW!)
+
+### Overview
+The random text prompts and random velocities feature enables **diverse motion generation** for evaluation and dataset creation. Each sample can have a unique text description and velocity target.
+
+### How It Works
+
+**Random Text Prompts:**
+- Loads 8 example prompts from `assets/example_text_prompts.txt`
+- Randomly samples one prompt per output sample (with replacement)
+- Case-insensitive: "random", "RANDOM", "Random" all work
+- Fallback to default "walk" if file missing
+
+**Random Velocities:**
+- Generates random vx and vz for each sample
+- Range: [-1.0, 1.0] for both axes
+- Each sample gets independent guidance
+- Per-sample targets (not uniform across batch)
+
+### Usage Patterns
+
+| Use Case | Command |
+|----------|---------|
+| Baseline evaluation | `--text_prompt "random" --num_samples 10` |
+| Velocity study | `--text_prompt "walk" --target_velocity "random" --num_samples 10` |
+| Full diversity | `--text_prompt "random" --target_velocity "random" --num_samples 10` |
+| Weak guidance | `--target_velocity "random" --velocity_guidance_scale 0.1` |
+| Strong guidance | `--target_velocity "random" --velocity_guidance_scale 0.5` |
+
+### Technical Details
+
+**Text loading:**
+```python
+# Reads from assets/example_text_prompts.txt
+with open('assets/example_text_prompts.txt', 'r') as f:
+    prompts = [line.strip() for line in f if line.strip()]
+selected = np.random.choice(prompts, size=num_samples, replace=True)
+```
+
+**Velocity generation:**
+```python
+vx_vals = np.random.uniform(-1.0, 1.0, batch_size)
+vz_vals = np.random.uniform(-1.0, 1.0, batch_size)
+per_sample_velocities = torch.tensor(
+    np.column_stack([vx_vals, vz_vals]),
+    device=device, dtype=torch.float32
+)  # Shape: (batch_size, 2)
+```
+
+**Per-sample guidance:**
+- `VelocityGuidedSampleModel` tracks `per_sample_velocities`
+- During forward pass, uses per-sample targets when available
+- Falls back to uniform `target_velocity` if per-sample not set
+- Backward compatible with existing uniform velocity commands
+
+### Implementation Files
+- **sample/generate.py**: Random text/velocity parsing and initialization
+- **utils/velocity_guidance_sampler.py**: Per-sample velocity support in guidance model
 
 ---
 
@@ -362,6 +505,10 @@ Guided x_pred
 - [x] CLI argument support (`utils/parser_util.py`)
 - [x] Training script (`train/train_velocity_regressor.py`)
 - [x] Example script (`scripts/generate_with_velocity_guidance.py`)
+- [x] Timestep conditioning for regressor (enables noise-adaptive predictions)
+- [x] Random text prompts feature (`--text_prompt "random"`)
+- [x] Random velocity targets feature (`--target_velocity "random"`)
+- [x] Per-sample velocity guidance (different velocity per sample in batch)
 - [x] Comprehensive documentation (this file)
 
 Ready to use! 🎬

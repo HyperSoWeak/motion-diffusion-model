@@ -129,6 +129,7 @@ dmypy.json
 .pyre/
 
 save/
+checkpoints/
 wandb/
 t2m/
 body_models/

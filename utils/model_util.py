@@ -12,7 +12,9 @@ def load_model_wo_clip(model, state_dict):
     del state_dict['embed_timestep.sequence_pos_encoder.pe']  # no need to load it (fixed), and causes size mismatch for older models
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
     assert len(unexpected_keys) == 0
-    assert all([k.startswith('clip_model.') or 'sequence_pos_encoder' in k for k in missing_keys])
+    allowed_missing = ('clip_model.', 'sequence_pos_encoder', 'embed_phys_flag.')
+    assert all(any(k.startswith(prefix) or prefix in k for prefix in allowed_missing)
+               for k in missing_keys), f"Unexpected missing keys: {[k for k in missing_keys if not any(p in k for p in allowed_missing)]}"
 
 
 def create_model_and_diffusion(args, data):
@@ -92,6 +94,10 @@ def create_gaussian_diffusion(args):
     else:
         lambda_target_loc = 0.
 
+    lambda_floor   = getattr(args, 'lambda_floor',   0.)
+    lambda_skate   = getattr(args, 'lambda_skate',   0.)
+    lambda_vel_hml = getattr(args, 'lambda_vel_hml', 0.)
+
     return SpacedDiffusion(
         use_timesteps=space_timesteps(steps, timestep_respacing),
         betas=betas,
@@ -113,6 +119,9 @@ def create_gaussian_diffusion(args):
         lambda_rcxyz=args.lambda_rcxyz,
         lambda_fc=args.lambda_fc,
         lambda_target_loc=lambda_target_loc,
+        lambda_floor=lambda_floor,
+        lambda_skate=lambda_skate,
+        lambda_vel_hml=lambda_vel_hml,
     )
 
 def load_saved_model(model, model_path, use_avg: bool=False):  # use_avg_model

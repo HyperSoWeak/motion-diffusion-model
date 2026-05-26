@@ -113,6 +113,23 @@ def add_model_options(parser):
     group.add_argument("--lambda_vel", default=0.0, type=float, help="Joint velocity loss.")
     group.add_argument("--lambda_fc", default=0.0, type=float, help="Foot contact loss.")
     group.add_argument("--lambda_target_loc", default=0.0, type=float, help="For HumanML only, when . L2 with target location.")
+    group.add_argument("--lambda_floor", default=0.0, type=float,
+                       help="Floor non-penetration loss for hml_vec (penalises feet below y=0).")
+    group.add_argument("--lambda_skate", default=0.0, type=float,
+                       help="Foot-skating loss for hml_vec (penalises foot motion when contact label=1).")
+    group.add_argument("--lambda_vel_hml", default=0.0, type=float,
+                       help="Velocity feature loss for hml_vec: supervises local_velocity features "
+                            "[193:259] directly vs ground truth. Complements lambda_skate.")
+    # Physics CFG training
+    group.add_argument("--physics_neg_dir", default="", type=str,
+                       help="Path to MDM-generated negative samples (generate_physics_negatives.py output).")
+    group.add_argument("--physics_pos_dir", default="", type=str,
+                       help="Path to physics-corrected positive samples (generate_physics_positives.py output). "
+                            "If both neg_dir and pos_dir are set, enables Physics CFG training.")
+    group.add_argument("--phys_pos_ratio", default=0.5, type=float,
+                       help="Fraction of each batch using GT (phys_flag=1). Rest uses MDM negatives.")
+    group.add_argument("--phys_mask_prob", default=0.1, type=float,
+                       help="Probability of masking phys_flag → null token (like cond_mask_prob).")
     group.add_argument("--unconstrained", action='store_true',
                        help="Model is trained unconditionally. That is, it is constrained by neither text nor action. "
                             "Currently tested on HumanAct12 only.")
@@ -206,10 +223,30 @@ def add_sampling_options(parser):
                        help="Number of repetitions, per sample (text prompt/action)")
     group.add_argument("--guidance_param", default=2.5, type=float,
                        help="For classifier-free sampling - specifies the s parameter, as defined in the paper.")
+    group.add_argument("--physics_guidance_scale", default=0.0, type=float,
+                       help="Physics gradient guidance scale at inference time (0 = disabled). "
+                            "Steers denoising toward physically plausible motions. humanml only. Range: 1-20.")
+    group.add_argument("--physics_floor_weight", default=10.0, type=float,
+                       help="Weight for floor non-penetration term in physics guidance.")
+    group.add_argument("--physics_skate_weight", default=5.0, type=float,
+                       help="Weight for foot-skating term in physics guidance.")
+    group.add_argument("--physics_float_weight", default=10.0, type=float,
+                       help="Weight for floating (foot near floor when contact=1) term in physics guidance.")
+
+    # ── Physics CFG (classifier-free style, gradient on pred_x0) ──────────────
+    group.add_argument("--phys_scale", default=0.0, type=float,
+                       help="Physics CFG blend scale (0=off, 1=fully physics-corrected, "
+                            "recommended 0.3–0.7). Runs Adam on pred_x0 using the same "
+                            "floor/skate/float energy as gradient guidance.")
+    group.add_argument("--phys_optim_steps", default=3, type=int,
+                       help="Adam gradient-descent steps on pred_x0 per denoising step "
+                            "(physics CFG). More steps → stronger correction, slower sampling.")
+    group.add_argument("--phys_lr", default=0.05, type=float,
+                       help="Adam learning rate for physics CFG optimisation of pred_x0.")
 
     group.add_argument("--autoregressive", action='store_true', help="If true, and we use a prefix model will generate motions in an autoregressive loop.")
     group.add_argument("--autoregressive_include_prefix", action='store_true', help="If true, include the init prefix in the output, otherwise, will drop it.")
-    group.add_argument("--autoregressive_init", default='data', type=str, choices=['data', 'isaac'], 
+    group.add_argument("--autoregressive_init", default='data', type=str, choices=['data', 'isaac'],
                         help="Sets the source of the init frames, either from the dataset or isaac init poses.")
 
 def add_generate_options(parser):

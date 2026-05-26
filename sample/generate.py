@@ -11,6 +11,8 @@ from utils.parser_util import generate_args
 from utils.model_util import create_model_and_diffusion, load_saved_model
 from utils import dist_util
 from utils.sampler_util import ClassifierFreeSampleModel, AutoRegressiveSampler
+from diffusion.physics_guidance import make_physics_guidance
+from model.physics_cfg_sampler import PhysicsCFGSampleModel
 from data_loaders.get_data import get_dataset_loader
 from data_loaders.humanml.scripts.motion_process import recover_from_ric, get_target_location, sample_goal
 import data_loaders.humanml.utils.paramUtil as paramUtil
@@ -95,6 +97,47 @@ def main(args=None):
     model.to(dist_util.dev())
     model.eval()  # disable random masking
 
+    # ── Physics guidance (choose one: CFG or gradient-based) ──────────────────
+    phys_scale         = getattr(args, 'phys_scale', 0.)
+    physics_guidance_scale = getattr(args, 'physics_guidance_scale', 0.)
+    physics_cond_fn    = None
+
+    if phys_scale > 0. and args.dataset == 'humanml':
+        # Physics CFG — gradient descent on pred_x0 (stable, recommended)
+        phys_energy = make_physics_guidance(
+            data.dataset,
+            guidance_scale=1.,                            # scale handled by phys_scale
+            floor_weight=getattr(args, 'physics_floor_weight', 10.),
+            skate_weight=getattr(args, 'physics_skate_weight',  5.),
+            float_weight=getattr(args, 'physics_float_weight', 10.),
+        )
+        if phys_energy is not None:
+            model = PhysicsCFGSampleModel(
+                model,
+                physics_energy=phys_energy,
+                phys_optim_steps=getattr(args, 'phys_optim_steps', 3),
+                phys_lr=getattr(args, 'phys_lr', 0.05),
+            )
+            model.to(dist_util.dev())
+            print(f'[PhysicsCFG] enabled  phys_scale={phys_scale}  '
+                  f'steps={args.phys_optim_steps}  lr={args.phys_lr}')
+        else:
+            print('[PhysicsCFG] could not build energy fn (missing mean/std). Disabled.')
+
+    elif physics_guidance_scale > 0. and args.dataset == 'humanml':
+        # Legacy gradient-based classifier guidance (kept for backward compat)
+        physics_cond_fn = make_physics_guidance(
+            data.dataset,
+            guidance_scale=physics_guidance_scale,
+            floor_weight=getattr(args, 'physics_floor_weight', 10.),
+            skate_weight=getattr(args, 'physics_skate_weight',  5.),
+            float_weight=getattr(args, 'physics_float_weight', 10.),
+        )
+        if physics_cond_fn is not None:
+            print(f'[PhysicsGradGuidance] enabled  scale={physics_guidance_scale}')
+        else:
+            print('[PhysicsGradGuidance] could not build guidance fn (missing mean/std).')
+
     motion_shape = (args.batch_size, model.njoints, model.nfeats, n_frames)
 
     if is_using_data:
@@ -126,6 +169,10 @@ def main(args=None):
     # add CFG scale to batch
     if args.guidance_param != 1:
         model_kwargs['y']['scale'] = torch.ones(args.batch_size, device=dist_util.dev()) * args.guidance_param
+
+    # add physics CFG scale to batch (used by PhysicsCFGSampleModel)
+    if phys_scale > 0.:
+        model_kwargs['y']['phys_scale'] = torch.ones(args.batch_size, device=dist_util.dev()) * phys_scale
     
     if 'text' in model_kwargs['y'].keys():
         # encoding once instead of each iteration saves lots of time
@@ -155,6 +202,8 @@ def main(args=None):
             dump_steps=None,
             noise=None,
             const_noise=False,
+            cond_fn=physics_cond_fn,                        # None unless legacy gradient guidance
+            cond_fn_with_grad=physics_cond_fn is not None,  # gradient flows only for legacy path
         )
 
         # Recover XYZ *positions* from HumanML3D vector representation

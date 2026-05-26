@@ -61,6 +61,10 @@ def collate(batch):
     if 'key' in notnone_batches[0]:
         cond['y'].update({'db_key': [b['key'] for b in notnone_batches]})
 
+    if 'phys_flag' in notnone_batches[0]:
+        phys_flags = [b['phys_flag'] for b in notnone_batches]
+        cond['y'].update({'phys_flag': torch.tensor(phys_flags, dtype=torch.long)})
+
     return motion, cond
 
 # an adapter to our collate func
@@ -75,6 +79,22 @@ def t2m_collate(batch, target_batch_size):
         'tokens': b[6],
         'lengths': b[5],
         'key': b[7] if len(b) > 7 else None,
+    } for b in full_batch]
+    return collate(adapted_batch)
+
+
+def physics_t2m_collate(batch, target_batch_size):
+    """Same as t2m_collate but also collects phys_flag from b[8]."""
+    repeat_factor = -(-target_batch_size // len(batch))
+    repeated_batch = batch * repeat_factor
+    full_batch = repeated_batch[:target_batch_size]
+    adapted_batch = [{
+        'inp':       torch.tensor(b[4].T).float().unsqueeze(1),
+        'text':      b[2],
+        'tokens':    b[6],
+        'lengths':   b[5],
+        'key':       b[7] if len(b) > 7 else None,
+        'phys_flag': int(b[8]) if len(b) > 8 else 2,  # 2 = null (no flag)
     } for b in full_batch]
     return collate(adapted_batch)
 

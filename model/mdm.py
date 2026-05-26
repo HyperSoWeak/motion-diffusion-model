@@ -99,6 +99,11 @@ class MDM(nn.Module):
 
         self.embed_timestep = TimestepEmbedder(self.latent_dim, self.sequence_pos_encoder)
 
+        # Physics CFG condition: flag=0 (MDM-generated, no physics) / flag=1 (GT, physics)
+        # Null token (index=2) is used when phys_flag is masked during training.
+        self.embed_phys_flag = nn.Embedding(3, self.latent_dim)  # 0, 1, 2(null)
+        self.phys_null_idx = 2
+
         if self.cond_mode != 'no_cond':
             if 'text' in self.cond_mode:
                 # We support CLIP encoder and DistilBERT
@@ -206,6 +211,21 @@ class MDM(nn.Module):
                                    y['mask']], dim=-1)
 
         force_mask = y.get('uncond', False)
+
+        # Physics CFG flag embedding — added to emb after text/action condition is built
+        # phys_flag : [bs] int tensor with values 0 (MDM negative) or 1 (GT positive)
+        # If absent or masked (phys_uncond=True), use null token so model ignores it.
+        _phys_flag = y.get('phys_flag', None)
+        if _phys_flag is not None:
+            _use_null = y.get('phys_uncond', False)
+            if _use_null:
+                _phys_idx = torch.full_like(_phys_flag, self.phys_null_idx)
+            else:
+                _phys_idx = _phys_flag.long()
+            _phys_emb = self.embed_phys_flag(_phys_idx)  # [bs, d]
+        else:
+            _phys_emb = None
+
         if 'text' in self.cond_mode:
             if 'text_embed' in y.keys():  # caching option
                 enc_text = y['text_embed']
@@ -224,9 +244,13 @@ class MDM(nn.Module):
         if 'action' in self.cond_mode:
             action_emb = self.embed_action(y['action'])
             emb = time_emb + self.mask_cond(action_emb, force_mask=force_mask)
-        if self.cond_mode == 'no_cond': 
+        if self.cond_mode == 'no_cond':
             # unconstrained
             emb = time_emb
+
+        # Inject physics flag — always added regardless of cond_mode
+        if _phys_emb is not None:
+            emb = emb + _phys_emb[None]   # [1, bs, d] broadcast over seq dim
 
         if self.arch == 'gru':
             x_reshaped = x.reshape(bs, njoints*nfeats, 1, nframes)

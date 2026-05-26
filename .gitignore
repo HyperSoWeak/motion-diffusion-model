@@ -142,3 +142,8 @@ slurm**/
 .vscode/
 *.zip
 __MACOSX/
+
+# Physics CFG generated data (large binary files)
+dataset/mdm_negatives/
+dataset/mdm_positives/
+save/

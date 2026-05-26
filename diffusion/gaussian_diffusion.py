@@ -137,6 +137,9 @@ class GaussianDiffusion:
         lambda_vel_rcxyz=0.,
         lambda_fc=0.,
         lambda_target_loc=0.,
+        lambda_floor=0.,
+        lambda_skate=0.,
+        lambda_vel_hml=0.,
         **kargs,
     ):
         self.model_mean_type = model_mean_type
@@ -157,9 +160,14 @@ class GaussianDiffusion:
         self.lambda_root_vel = lambda_root_vel
         self.lambda_vel_rcxyz = lambda_vel_rcxyz
         self.lambda_fc = lambda_fc
+        # Physics losses for hml_vec (HumanML3D) — no rot2xyz needed
+        self.lambda_floor    = lambda_floor    # floor non-penetration
+        self.lambda_skate    = lambda_skate    # foot skating when grounded
+        self.lambda_vel_hml  = lambda_vel_hml  # velocity features [193:259] vs GT
 
         if self.lambda_rcxyz > 0. or self.lambda_vel > 0. or self.lambda_root_vel > 0. or \
-                self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0. or self.lambda_target_loc > 0.:
+                self.lambda_vel_rcxyz > 0. or self.lambda_fc > 0. or self.lambda_target_loc > 0. or \
+                self.lambda_floor > 0. or self.lambda_skate > 0. or self.lambda_vel_hml > 0.:
             assert self.loss_type == LossType.MSE, 'Geometric losses are supported by MSE loss type only!'
 
         # Use float64 for accuracy.
@@ -549,6 +557,7 @@ class GaussianDiffusion:
         denoised_fn=None,
         cond_fn=None,
         model_kwargs=None,
+        const_noise=False,  # accepted for API compat with p_sample; not used (grad path has no const noise)
     ):
         """
         Sample x_{t-1} from the model at the given timestep.
@@ -1341,17 +1350,66 @@ class GaussianDiffusion:
             if self.lambda_target_loc > 0.:
                 assert self.model_mean_type == ModelMeanType.START_X, 'This feature supports only X_start pred for now!'
                 ref_target = model_kwargs['y']['target_cond']
-                pred_target = get_target_location(model_output, dataset.mean_gpu, dataset.std_gpu, 
-                                            model_kwargs['y']['lengths'], dataset.t2m_dataset.opt.joints_num, model.all_goal_joint_names, 
+                pred_target = get_target_location(model_output, dataset.mean_gpu, dataset.std_gpu,
+                                            model_kwargs['y']['lengths'], dataset.t2m_dataset.opt.joints_num, model.all_goal_joint_names,
                                             model_kwargs['y']['target_joint_names'], model_kwargs['y']['is_heading'])
                 terms["target_loc"] = masked_goal_l2(pred_target, ref_target, model_kwargs['y'], model.all_goal_joint_names)
-                            
+
+            # Physics / velocity losses for hml_vec — work directly on the feature vector.
+            # HumanML3D feature layout: [root_rot_vel(1), root_lin_vel(2), root_y(1),
+            #   ric_data(63), rot_data(126), local_vel(66), foot_contact(4)] = 263
+            # local_vel indices: [193:259]  (22 joints × 3)
+            # Foot-contact label order: [L_ankle=7, L_foot=10, R_ankle=8, R_foot=11]
+
+            if self.lambda_vel_hml > 0. and self.data_rep == 'hml_vec':
+                # Directly supervise local_velocity features (indices 193:259) vs GT
+                pred_vel_feat   = model_output[:, 193:259, :, :]   # [bs, 66, 1, nframes]
+                target_vel_feat = target[:, 193:259, :, :]
+                terms["vel_hml"] = self.masked_l2(pred_vel_feat, target_vel_feat, mask)
+
+            if (self.lambda_floor > 0. or self.lambda_skate > 0.) and self.data_rep == 'hml_vec':
+                assert self.model_mean_type == ModelMeanType.START_X
+                # Denormalise to physical units
+                mean = dataset.mean_gpu.view(1, -1, 1, 1)   # [1, 263, 1, 1]
+                std  = dataset.std_gpu.view(1, -1, 1, 1)
+                pred_phys = model_output * std + mean        # [bs, 263, 1, nframes]
+
+                root_y = pred_phys[:, 3, 0, :]              # [bs, nframes]
+                # Absolute Y for L_ankle, L_foot, R_ankle, R_foot (ric Y indices)
+                foot_ric_y_idxs = [23, 32, 26, 35]
+                foot_abs_y = torch.stack(
+                    [root_y + pred_phys[:, idx, 0, :] for idx in foot_ric_y_idxs],
+                    dim=1,
+                )  # [bs, 4, nframes]
+
+                if self.lambda_floor > 0.:
+                    import torch.nn.functional as F
+                    terms["floor"] = self.masked_l2(
+                        F.relu(-foot_abs_y).unsqueeze(2),
+                        torch.zeros_like(foot_abs_y).unsqueeze(2),
+                        mask,
+                        entries_norm=False,
+                    )
+
+                if self.lambda_skate > 0.:
+                    fc_soft = torch.sigmoid(pred_phys[:, 259:263, 0, :] * 5.)  # [bs, 4, nframes]
+                    foot_vel = (foot_abs_y[:, :, 1:] - foot_abs_y[:, :, :-1]).abs()
+                    skate = foot_vel * fc_soft[:, :, :-1]
+                    terms["skate"] = self.masked_l2(
+                        skate.unsqueeze(2),
+                        torch.zeros_like(skate).unsqueeze(2),
+                        mask[:, :, :, 1:],
+                        entries_norm=False,
+                    )
 
             terms["loss"] = terms["rot_mse"] + terms.get('vb', 0.) +\
-                            (self.lambda_vel * terms.get('vel_mse', 0.)) +\
-                            (self.lambda_rcxyz * terms.get('rcxyz_mse', 0.)) + \
+                            (self.lambda_vel     * terms.get('vel_mse',  0.)) +\
+                            (self.lambda_vel_hml * terms.get('vel_hml',  0.)) +\
+                            (self.lambda_rcxyz   * terms.get('rcxyz_mse',0.)) + \
                             (self.lambda_target_loc * terms.get('target_loc', 0.)) + \
-                            (self.lambda_fc * terms.get('fc', 0.))
+                            (self.lambda_fc      * terms.get('fc',       0.)) + \
+                            (self.lambda_floor   * terms.get('floor',    0.)) + \
+                            (self.lambda_skate   * terms.get('skate',    0.))
 
         else:
             raise NotImplementedError(self.loss_type)

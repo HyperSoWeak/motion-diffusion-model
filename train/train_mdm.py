@@ -38,12 +38,28 @@ def main():
 
     print("creating data loader...")
 
-    data = get_dataset_loader(name=args.dataset, 
-                              batch_size=args.batch_size, 
-                              num_frames=args.num_frames, 
-                              fixed_len=args.pred_len + args.context_len, 
-                              pred_len=args.pred_len,
-                              device=dist_util.dev(),)
+    physics_neg_dir = getattr(args, 'physics_neg_dir', '')
+    physics_pos_dir = getattr(args, 'physics_pos_dir', '')
+    if physics_neg_dir and physics_pos_dir:
+        from data_loaders.get_data import get_physics_dataset_loader
+        print(f'[PhysicsCFG] neg={physics_neg_dir}  pos={physics_pos_dir}')
+        data = get_physics_dataset_loader(
+            name=args.dataset,
+            batch_size=args.batch_size,
+            num_frames=args.num_frames,
+            neg_dir=physics_neg_dir,
+            pos_dir=physics_pos_dir,
+            pos_ratio=getattr(args, 'phys_pos_ratio', 0.5),
+            phys_mask_prob=getattr(args, 'phys_mask_prob', 0.1),
+            device=dist_util.dev(),
+        )
+    else:
+        data = get_dataset_loader(name=args.dataset,
+                                  batch_size=args.batch_size,
+                                  num_frames=args.num_frames,
+                                  fixed_len=args.pred_len + args.context_len,
+                                  pred_len=args.pred_len,
+                                  device=dist_util.dev())
 
     print("creating model and diffusion...")
     model, diffusion = create_model_and_diffusion(args, data)

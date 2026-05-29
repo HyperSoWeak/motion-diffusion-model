@@ -13,6 +13,7 @@ from utils import dist_util
 from utils.sampler_util import ClassifierFreeSampleModel, AutoRegressiveSampler
 from diffusion.physics_guidance import make_physics_guidance
 from model.physics_cfg_sampler import PhysicsCFGSampleModel
+from model.physics_cfg_sampler2 import PhysicsCFGSampleModel2
 from data_loaders.get_data import get_dataset_loader
 from data_loaders.humanml.scripts.motion_process import recover_from_ric, get_target_location, sample_goal
 import data_loaders.humanml.utils.paramUtil as paramUtil
@@ -123,6 +124,13 @@ def main(args=None):
                   f'steps={args.phys_optim_steps}  lr={args.phys_lr}')
         else:
             print('[PhysicsCFG] could not build energy fn (missing mean/std). Disabled.')
+
+    phys_cfg_scale = getattr(args, 'phys_cfg_scale', 0.)
+    if phys_cfg_scale > 0. and args.dataset == 'humanml':
+        # Trained Physics CFG — run model twice with phys_flag=0/1 and interpolate
+        model = PhysicsCFGSampleModel2(model, phys_scale=phys_cfg_scale)
+        model.to(dist_util.dev())
+        print(f'[PhysicsCFG2] enabled  phys_cfg_scale={phys_cfg_scale}')
 
     elif physics_guidance_scale > 0. and args.dataset == 'humanml':
         # Legacy gradient-based classifier guidance (kept for backward compat)

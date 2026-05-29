@@ -243,6 +243,11 @@ def add_sampling_options(parser):
                             "(physics CFG). More steps → stronger correction, slower sampling.")
     group.add_argument("--phys_lr", default=0.05, type=float,
                        help="Adam learning rate for physics CFG optimisation of pred_x0.")
+    # ── Trained Physics CFG (PhysicsCFGSampleModel2, requires retrained model) ──
+    group.add_argument("--phys_cfg_scale", default=0.0, type=float,
+                       help="Physics CFG scale for trained model with phys_flag condition. "
+                            "Runs model twice (flag=0 and flag=1) and interpolates. "
+                            "Requires model trained with --physics_neg_dir / --physics_pos_dir.")
 
     group.add_argument("--autoregressive", action='store_true', help="If true, and we use a prefix model will generate motions in an autoregressive loop.")
     group.add_argument("--autoregressive_include_prefix", action='store_true', help="If true, include the init prefix in the output, otherwise, will drop it.")

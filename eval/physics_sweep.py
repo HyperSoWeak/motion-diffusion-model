@@ -1,10 +1,18 @@
 """
-physics_sweep.py — 自動 sweep phys_scale（Physics CFG），量測 trade-off
+physics_sweep.py — 自動 sweep phys_scale/phys_cfg_scale，量測 trade-off
 
-用法：
+用法（trained Physics CFG，PhysicsCFGSampleModel2）：
+    python -m eval.physics_sweep \
+        --model_path save/humanml_physics_cfg/model000950101.pt \
+        --mode cfg \
+        --text_prompt "a person walks forward." \
+        --scales 0 0.3 0.5 0.7 1.0 1.5 2.0 \
+        --num_samples 6 --device 0
+
+用法（test-time Adam，PhysicsCFGSampleModel）：
     python -m eval.physics_sweep \
         --model_path save/humanml_enc_512_50steps/model000750000.pt \
-        --text_prompt "a person walks forward." \
+        --mode adam \
         --scales 0 0.1 0.2 0.3 0.5 0.7 1.0 \
         --num_samples 6 --device 0
 
@@ -18,7 +26,6 @@ import subprocess
 import sys
 import os
 import csv
-import json
 from pathlib import Path
 
 # 讓 eval/physics_metrics 可以 import
@@ -26,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from eval.physics_metrics import evaluate_results_npy
 
 
-def run_generate(model_path, text_prompt, out_dir, scale,
+def run_generate(model_path, text_prompt, out_dir, scale, mode,
                  num_samples, num_reps, device,
                  guidance_param, floor_w, skate_w, float_w,
                  phys_optim_steps, phys_lr):
@@ -40,15 +47,22 @@ def run_generate(model_path, text_prompt, out_dir, scale,
         '--num_repetitions', str(num_reps),
         '--device', str(device),
         '--guidance_param', str(guidance_param),
-        '--phys_scale', str(scale),
-        '--physics_floor_weight', str(floor_w),
-        '--physics_skate_weight', str(skate_w),
-        '--physics_float_weight', str(float_w),
-        '--phys_optim_steps', str(phys_optim_steps),
-        '--phys_lr', str(phys_lr),
         '--seed', '42',
     ]
-    print(f'\n[sweep] scale={scale:.1f}  →  {out_dir}')
+    if mode == 'cfg':
+        # Trained Physics CFG: PhysicsCFGSampleModel2
+        cmd += ['--phys_cfg_scale', str(scale)]
+    else:
+        # Test-time Adam: PhysicsCFGSampleModel
+        cmd += [
+            '--phys_scale', str(scale),
+            '--physics_floor_weight', str(floor_w),
+            '--physics_skate_weight', str(skate_w),
+            '--physics_float_weight', str(float_w),
+            '--phys_optim_steps', str(phys_optim_steps),
+            '--phys_lr', str(phys_lr),
+        ]
+    print(f'\n[sweep] mode={mode}  scale={scale}  →  {out_dir}')
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         print('[sweep] FAILED:\n', result.stderr[-2000:])
@@ -60,10 +74,12 @@ def run_generate(model_path, text_prompt, out_dir, scale,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', required=True)
+    parser.add_argument('--mode', choices=['cfg', 'adam'], default='cfg',
+                        help='cfg=trained PhysicsCFGSampleModel2, adam=test-time Adam')
     parser.add_argument('--text_prompt', default='a person walks forward.')
     parser.add_argument('--scales', nargs='+', type=float,
-                        default=[0., 0.1, 0.2, 0.3, 0.5, 0.7, 1.0],
-                        help='List of phys_scale (Physics CFG) values to sweep')
+                        default=[0., 0.3, 0.5, 0.7, 1.0, 1.5, 2.0],
+                        help='List of scale values to sweep')
     parser.add_argument('--num_samples', type=int, default=6)
     parser.add_argument('--num_reps', type=int, default=1)
     parser.add_argument('--device', type=int, default=0)
@@ -72,9 +88,9 @@ def main():
     parser.add_argument('--skate_w', type=float, default=5.)
     parser.add_argument('--float_w', type=float, default=10.)
     parser.add_argument('--phys_optim_steps', type=int, default=3,
-                        help='Adam steps per denoising step for physics CFG')
+                        help='Adam steps per denoising step (adam mode only)')
     parser.add_argument('--phys_lr', type=float, default=0.05,
-                        help='Adam lr for physics CFG optimisation')
+                        help='Adam lr (adam mode only)')
     parser.add_argument('--output_dir', default='save/physics_sweep_cfg')
     args = parser.parse_args()
 
@@ -83,12 +99,13 @@ def main():
 
     rows = []
     for scale in args.scales:
-        out_dir = os.path.join(args.output_dir, f'scale_{scale:.1f}')
+        out_dir = os.path.join(args.output_dir, f'scale_{scale}')
         npy = run_generate(
             model_path=args.model_path,
             text_prompt=args.text_prompt,
             out_dir=out_dir,
             scale=scale,
+            mode=args.mode,
             num_samples=args.num_samples,
             num_reps=args.num_reps,
             device=args.device,

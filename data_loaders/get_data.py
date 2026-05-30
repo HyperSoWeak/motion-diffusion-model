@@ -1,3 +1,4 @@
+import os
 from torch.utils.data import DataLoader
 from data_loaders.tensors import collate as all_collate
 from data_loaders.tensors import t2m_collate, t2m_prefix_collate, physics_t2m_collate
@@ -61,6 +62,7 @@ def get_dataset_loader(name, batch_size, num_frames, split='train', hml_mode='tr
 
 def get_physics_dataset_loader(name, batch_size, num_frames,
                                 neg_dir: str, pos_dir: str,
+                                gt_dir: str = '',
                                 split='train', fixed_len=0,
                                 pos_ratio=0.5, phys_mask_prob=0.1, device=None):
     """
@@ -78,12 +80,22 @@ def get_physics_dataset_loader(name, batch_size, num_frames,
     mean = np.load(f'{data_root}/Mean.npy')
     std  = np.load(f'{data_root}/Std.npy')
 
+    # Prefer GT data (new_joint_vecs/) as phys_flag=1 if available
+    resolved_gt_dir = gt_dir or f'{data_root}/new_joint_vecs'
+    if not os.path.isdir(resolved_gt_dir) or not any(
+            f.endswith('.npy') for f in os.listdir(resolved_gt_dir)[:5]):
+        resolved_gt_dir = ''
+        print('[PhysicsCFG] GT dir not available, falling back to pos_dir (Adam positives)')
+    else:
+        print(f'[PhysicsCFG] Using GT from {resolved_gt_dir} as phys_flag=1')
+
     dataset = PhysicsPairedDataset(
         data_root=data_root,
         neg_dir=neg_dir,
         pos_dir=pos_dir,
         mean=mean,
         std=std,
+        gt_dir=resolved_gt_dir,
         split=split,
         max_frames=num_frames or 196,
         pos_ratio=pos_ratio,

@@ -78,18 +78,18 @@ class TrainLoop:
         self.save_dir = args.save_dir
         self.overwrite = args.overwrite
 
+        # Only optimise parameters that require gradients (respects phys_flag_only freezing)
+        trainable_params = [p for p in self.mp_trainer.master_params if p.requires_grad]
         if self.args.use_ema:
             self.opt = AdamW(
-                # with amp, we don't need to use the mp_trainer's master_params
-                (self.model.parameters()
-                 if self.use_fp16 else self.mp_trainer.master_params),
+                trainable_params,
                 lr=self.lr,
                 weight_decay=self.weight_decay,
                 betas=(0.9, self.args.adam_beta2),
             )
         else:
             self.opt = AdamW(
-                self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
+                trainable_params, lr=self.lr, weight_decay=self.weight_decay
             )
 
         if self.resume_step:

@@ -130,6 +130,9 @@ def add_model_options(parser):
                        help="Fraction of each batch using GT (phys_flag=1). Rest uses MDM negatives.")
     group.add_argument("--phys_mask_prob", default=0.1, type=float,
                        help="Probability of masking phys_flag → null token (like cond_mask_prob).")
+    group.add_argument("--phys_flag_only", action='store_true',
+                       help="If set, freeze all model weights except embed_phys_flag. "
+                            "Use with higher lr (e.g. 1e-3) for targeted phys_flag training.")
     group.add_argument("--unconstrained", action='store_true',
                        help="Model is trained unconditionally. That is, it is constrained by neither text nor action. "
                             "Currently tested on HumanAct12 only.")

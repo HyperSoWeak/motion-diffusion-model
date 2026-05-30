@@ -66,6 +66,17 @@ def main():
     model.to(dist_util.dev())
     model.rot2xyz.smpl_model.eval()
 
+    # Optional: freeze everything except embed_phys_flag for targeted training
+    if getattr(args, 'phys_flag_only', False):
+        frozen = 0
+        for name, p in model.named_parameters():
+            if 'embed_phys_flag' not in name and not name.startswith('clip_model.'):
+                p.requires_grad_(False)
+                frozen += p.numel()
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f'[phys_flag_only] Frozen {frozen/1e6:.2f}M params. '
+              f'Training only {trainable/1e3:.1f}K params (embed_phys_flag).')
+
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters_wo_clip()) / 1000000.0))
     print("Training...")
     TrainLoop(args, train_platform, model, diffusion, data).run_loop()

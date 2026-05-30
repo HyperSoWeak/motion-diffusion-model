@@ -53,6 +53,23 @@ def main():
             phys_mask_prob=getattr(args, 'phys_mask_prob', 0.1),
             device=dist_util.dev(),
         )
+    elif getattr(args, 'vel_cond', False):
+        # Velocity CFG training: load GT motions via PhysicsPairedDataset (no GloVe needed).
+        # pos_ratio=1.0 → always use GT (new_joint_vecs/) as the training motions.
+        # neg_dir is still needed for sample-ID filtering but never loaded in __getitem__.
+        from data_loaders.get_data import get_physics_dataset_loader
+        neg_dir = getattr(args, 'physics_neg_dir', 'dataset/mdm_negatives')
+        print(f'[VelCFG] Loading GT motions via PhysicsPairedDataset (neg_dir={neg_dir})')
+        data = get_physics_dataset_loader(
+            name=args.dataset,
+            batch_size=args.batch_size,
+            num_frames=args.num_frames,
+            neg_dir=neg_dir,
+            pos_dir='',          # not used when gt_dir is auto-detected
+            pos_ratio=1.0,       # always use GT
+            phys_mask_prob=0.0,  # no phys_flag masking (we use vel_cond instead)
+            device=dist_util.dev(),
+        )
     else:
         data = get_dataset_loader(name=args.dataset,
                                   batch_size=args.batch_size,
@@ -76,6 +93,18 @@ def main():
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f'[phys_flag_only] Frozen {frozen/1e6:.2f}M params. '
               f'Training only {trainable/1e3:.1f}K params (embed_phys_flag).')
+
+    # Optional: freeze everything except embed_vel / vel_null_emb for velocity CFG training
+    if getattr(args, 'vel_flag_only', False):
+        vel_params = {'embed_vel.weight', 'embed_vel.bias', 'vel_null_emb'}
+        frozen = 0
+        for name, p in model.named_parameters():
+            if name not in vel_params and not name.startswith('clip_model.'):
+                p.requires_grad_(False)
+                frozen += p.numel()
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f'[vel_flag_only] Frozen {frozen/1e6:.2f}M params. '
+              f'Training only {trainable/1e3:.1f}K params (embed_vel + vel_null_emb).')
 
     print('Total params: %.2fM' % (sum(p.numel() for p in model.parameters_wo_clip()) / 1000000.0))
     print("Training...")

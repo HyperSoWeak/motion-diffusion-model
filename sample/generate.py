@@ -14,6 +14,7 @@ from utils.sampler_util import ClassifierFreeSampleModel, AutoRegressiveSampler
 from diffusion.physics_guidance import make_physics_guidance
 from model.physics_cfg_sampler import PhysicsCFGSampleModel
 from model.physics_cfg_sampler2 import PhysicsCFGSampleModel2
+from model.velocity_cfg_sampler import VelocityCFGSampleModel
 from data_loaders.get_data import get_dataset_loader
 from data_loaders.humanml.scripts.motion_process import recover_from_ric, get_target_location, sample_goal
 import data_loaders.humanml.utils.paramUtil as paramUtil
@@ -124,6 +125,16 @@ def main(args=None):
                   f'steps={args.phys_optim_steps}  lr={args.phys_lr}')
         else:
             print('[PhysicsCFG] could not build energy fn (missing mean/std). Disabled.')
+
+    # Velocity CFG — trained model with vel_cond; controls root velocity at inference
+    target_velocity = getattr(args, 'target_velocity', -1.)
+    if target_velocity > 0. and args.dataset == 'humanml':
+        vel_guidance_scale = getattr(args, 'vel_guidance_scale', 2.0)
+        model = VelocityCFGSampleModel(model,
+                                       target_velocity=target_velocity,
+                                       vel_guidance_scale=vel_guidance_scale)
+        model.to(dist_util.dev())
+        print(f'[VelocityCFG] enabled  target_vel={target_velocity}  scale={vel_guidance_scale}')
 
     phys_cfg_scale = getattr(args, 'phys_cfg_scale', 0.)
     if phys_cfg_scale > 0. and args.dataset == 'humanml':

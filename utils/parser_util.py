@@ -133,6 +133,13 @@ def add_model_options(parser):
     group.add_argument("--phys_flag_only", action='store_true',
                        help="If set, freeze all model weights except embed_phys_flag. "
                             "Use with higher lr (e.g. 1e-3) for targeted phys_flag training.")
+    group.add_argument("--vel_cond", action='store_true',
+                       help="Enable velocity CFG conditioning. Computes root velocity from each "
+                            "training batch and conditions the model on it.")
+    group.add_argument("--vel_mask_prob", default=0.1, type=float,
+                       help="Probability of masking velocity condition → null embedding (for CFG).")
+    group.add_argument("--vel_flag_only", action='store_true',
+                       help="If set, freeze all weights except embed_vel / vel_null_emb.")
     group.add_argument("--unconstrained", action='store_true',
                        help="Model is trained unconditionally. That is, it is constrained by neither text nor action. "
                             "Currently tested on HumanAct12 only.")
@@ -251,6 +258,14 @@ def add_sampling_options(parser):
                        help="Physics CFG scale for trained model with phys_flag condition. "
                             "Runs model twice (flag=0 and flag=1) and interpolates. "
                             "Requires model trained with --physics_neg_dir / --physics_pos_dir.")
+
+    # ── Velocity CFG (VelocityCFGSampleModel, requires model trained with --vel_cond) ──
+    group.add_argument("--target_velocity", default=-1.0, type=float,
+                       help="Target root velocity magnitude (normalised HML_VEC units). "
+                            "> 0 activates VelocityCFGSampleModel. "
+                            "Requires model trained with --vel_cond.")
+    group.add_argument("--vel_guidance_scale", default=2.0, type=float,
+                       help="CFG guidance scale for velocity conditioning.")
 
     group.add_argument("--autoregressive", action='store_true', help="If true, and we use a prefix model will generate motions in an autoregressive loop.")
     group.add_argument("--autoregressive_include_prefix", action='store_true', help="If true, include the init prefix in the output, otherwise, will drop it.")

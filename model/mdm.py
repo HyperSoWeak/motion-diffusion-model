@@ -104,6 +104,11 @@ class MDM(nn.Module):
         self.embed_phys_flag = nn.Embedding(3, self.latent_dim)  # 0, 1, 2(null)
         self.phys_null_idx = 2
 
+        # Velocity CFG condition: continuous scalar (root velocity magnitude, normalised)
+        # Null embedding is used when vel_cond is masked (~10% of training steps).
+        self.embed_vel = nn.Linear(1, self.latent_dim)
+        self.vel_null_emb = nn.Parameter(torch.zeros(self.latent_dim))
+
         if self.cond_mode != 'no_cond':
             if 'text' in self.cond_mode:
                 # We support CLIP encoder and DistilBERT
@@ -251,6 +256,16 @@ class MDM(nn.Module):
         # Inject physics flag — always added regardless of cond_mode
         if _phys_emb is not None:
             emb = emb + _phys_emb[None]   # [1, bs, d] broadcast over seq dim
+
+        # Inject velocity condition
+        _vel_cond = y.get('vel_cond', None)
+        if _vel_cond is not None:
+            _vel_mask = y.get('vel_mask', None)   # [bs] bool, True = use null emb
+            _vel_emb = self.embed_vel(_vel_cond.float().unsqueeze(-1))  # [bs, d]
+            if _vel_mask is not None and _vel_mask.any():
+                _vel_emb = _vel_emb.clone()
+                _vel_emb[_vel_mask] = self.vel_null_emb
+            emb = emb + _vel_emb[None]  # [1, bs, d]
 
         if self.arch == 'gru':
             x_reshaped = x.reshape(bs, njoints*nfeats, 1, nframes)

@@ -12,7 +12,8 @@ def load_model_wo_clip(model, state_dict):
     del state_dict['embed_timestep.sequence_pos_encoder.pe']  # no need to load it (fixed), and causes size mismatch for older models
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
     assert len(unexpected_keys) == 0
-    allowed_missing = ('clip_model.', 'sequence_pos_encoder', 'embed_phys_flag.')
+    allowed_missing = ('clip_model.', 'sequence_pos_encoder', 'embed_phys_flag.',
+                       'embed_vel.', 'vel_null_emb')
     assert all(any(k.startswith(prefix) or prefix in k for prefix in allowed_missing)
                for k in missing_keys), f"Unexpected missing keys: {[k for k in missing_keys if not any(p in k for p in allowed_missing)]}"
 

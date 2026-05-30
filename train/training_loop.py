@@ -222,6 +222,19 @@ class TrainLoop:
                 motion = motion.to(self.device)
                 cond['y'] = {key: val.to(self.device) if torch.is_tensor(val) else val for key, val in cond['y'].items()}
 
+                # Velocity CFG condition: compute root speed from motion, randomly mask
+                if getattr(self.args, 'vel_cond', False):
+                    # motion can be [bs, 263, 1, T] or [bs, T, 263] depending on dataset mode
+                    if motion.dim() == 4:   # [bs, 263, 1, T]
+                        root_vel = motion[:, 1:3, 0, :]          # [bs, 2, T]
+                    else:                   # [bs, T, 263]
+                        root_vel = motion[:, :, 1:3].permute(0, 2, 1)  # [bs, 2, T]
+                    speed = root_vel.norm(dim=1).mean(dim=1)     # [bs]
+                    vel_mask_prob = getattr(self.args, 'vel_mask_prob', 0.1)
+                    vel_mask = torch.rand(speed.shape[0], device=speed.device) < vel_mask_prob
+                    cond['y']['vel_cond'] = speed
+                    cond['y']['vel_mask'] = vel_mask
+
                 self.run_step(motion, cond)
                 if self.total_step() % self.log_interval == 0:
                     for k,v in logger.get_current().dumpkvs().items():

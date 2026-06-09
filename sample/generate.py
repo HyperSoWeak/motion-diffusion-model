@@ -323,7 +323,19 @@ def main(args=None):
                                                          skeleton, motion, dataset=args.dataset, title=caption, 
                                                          fps=fps, gt_frames=gt_frames)
             rep_files.append(animation_save_path)
+            # save samples individually
+            if sample_i < num_vis_samples:
+                print(sample_print_template.format(caption, sample_i, rep_i, save_file))
+                clips = clips_array([[animations[sample_i, rep_i]]])
+                clips.duration = motion.shape[0] / fps
+                clips.write_videofile(animation_save_path, fps=fps, threads=4, logger=None)
+            else:                
+                print(sample_print_template.format(caption, sample_i, rep_i, save_file), '(not saved individually due to num_vis_samples limit)')
 
+        else:
+            print(row_print_template.format(caption, sample_i, '', '(not saved individually due to num_vis_samples limit)'))
+            
+    
     save_multiple_samples(out_path, {'all': all_file_template}, animations, fps, max(list(all_lengths) + [n_frames]))
 
     abs_path = os.path.abspath(out_path)

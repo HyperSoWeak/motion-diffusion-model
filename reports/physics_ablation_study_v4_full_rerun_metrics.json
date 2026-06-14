@@ -1,0 +1,90 @@
+[
+  {
+    "run_id": "ablate_0000",
+    "label": "baseline (g,f,s,r off)",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_0000_samples/physics_metrics.json",
+    "foot_contact_rate": 0.37056854367256165,
+    "foot_skating_score": 0.009700319729745388,
+    "ground_penetration_rate": 0.0015861742431297898,
+    "max_penetration_depth": 0.00880124419927597,
+    "mean_acceleration": 0.006714803632348776,
+    "mean_penetration_depth": 3.1986867270461516e-06
+  },
+  {
+    "run_id": "ablate_1000",
+    "label": "ground only",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_1000_samples/physics_metrics.json",
+    "foot_contact_rate": 0.384223997592926,
+    "foot_skating_score": 0.007766129449009895,
+    "ground_penetration_rate": 0.0010179923847317696,
+    "max_penetration_depth": 0.10213064402341843,
+    "mean_acceleration": 0.0069001950323581696,
+    "mean_penetration_depth": 1.9084614905295894e-05
+  },
+  {
+    "run_id": "ablate_0100",
+    "label": "foot only",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_0100_samples/physics_metrics.json",
+    "foot_contact_rate": 0.42637211084365845,
+    "foot_skating_score": 0.009091739542782307,
+    "ground_penetration_rate": 0.0008463541744276881,
+    "max_penetration_depth": 0.007015724666416645,
+    "mean_acceleration": 0.006730745080858469,
+    "mean_penetration_depth": 1.089270426746225e-06
+  },
+  {
+    "run_id": "ablate_0010",
+    "label": "smooth only",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_0010_samples/physics_metrics.json",
+    "foot_contact_rate": 0.4312303066253662,
+    "foot_skating_score": 0.0074561783112585545,
+    "ground_penetration_rate": 0.0018584280041977763,
+    "max_penetration_depth": 0.008784604258835316,
+    "mean_acceleration": 0.006201033014804125,
+    "mean_penetration_depth": 4.823925337404944e-06
+  },
+  {
+    "run_id": "ablate_1100",
+    "label": "ground + foot",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_1100_samples/physics_metrics.json",
+    "foot_contact_rate": 0.4042476415634155,
+    "foot_skating_score": 0.00898591335862875,
+    "ground_penetration_rate": 0.0002367424312978983,
+    "max_penetration_depth": 0.006119115278124809,
+    "mean_acceleration": 0.006353512406349182,
+    "mean_penetration_depth": 5.984807671666204e-07
+  },
+  {
+    "run_id": "ablate_1010",
+    "label": "ground + smooth",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_1010_samples/physics_metrics.json",
+    "foot_contact_rate": 0.403591126203537,
+    "foot_skating_score": 0.009550574235618114,
+    "ground_penetration_rate": 0.0011541192652657628,
+    "max_penetration_depth": 0.008436114527285099,
+    "mean_acceleration": 0.007215630263090134,
+    "mean_penetration_depth": 5.040135874878615e-06
+  },
+  {
+    "run_id": "ablate_0110",
+    "label": "foot + smooth",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_0110_samples/physics_metrics.json",
+    "foot_contact_rate": 0.41452205181121826,
+    "foot_skating_score": 0.008536883629858494,
+    "ground_penetration_rate": 0.0009528882801532745,
+    "max_penetration_depth": 0.009603808633983135,
+    "mean_acceleration": 0.006996677257120609,
+    "mean_penetration_depth": 5.097753273730632e-06
+  },
+  {
+    "run_id": "ablate_1110",
+    "label": "ground + foot + smooth (r=0)",
+    "metrics_path": "save/physics_ablate32_v4_full_rerun/ablate_1110_samples/physics_metrics.json",
+    "foot_contact_rate": 0.42995011806488037,
+    "foot_skating_score": 0.008733358234167099,
+    "ground_penetration_rate": 0.0012606533709913492,
+    "max_penetration_depth": 0.005805531982332468,
+    "mean_acceleration": 0.0069596548564732075,
+    "mean_penetration_depth": 2.8335439310467336e-06
+  }
+]
